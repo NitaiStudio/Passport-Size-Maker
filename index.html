@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Passport Photo Maker</title>
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22%236366f1%22/><path d=%22M30 40 Q50 10 70 40 Q70 70 50 90 Q30 70 30 40%22 fill=%22white%22/></svg>">
+    
+    <!-- Libraries -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        
+        :root {
+            --primary: #6366f1;
+            --secondary: #ec4899;
+            --surface: #f8fafc;
+            --glass: rgba(255, 255, 255, 0.7);
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--surface);
+            overflow-x: hidden;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Splash Screen */
+        #splash {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: linear-gradient(-45deg, #6366f1, #a855f7, #ec4899, #06b6d4);
+            background-size: 400% 400%;
+            animation: gradientBG 10s ease infinite;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.8s cubic-bezier(0.77, 0, 0.175, 1), opacity 0.5s;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .logo-container {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 40px rgba(0,0,0,0.1), inset 0 0 20px rgba(255,255,255,0.3);
+            animation: pulseGlow 2s infinite;
+        }
+
+        @keyframes pulseGlow {
+            0% { transform: scale(1); box-shadow: 0 0 20px rgba(255,255,255,0.2); }
+            50% { transform: scale(1.05); box-shadow: 0 0 40px rgba(255,255,255,0.5); }
+            100% { transform: scale(1); box-shadow: 0 0 20px rgba(255,255,255,0.2); }
+        }
+
+        .blob {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            filter: blur(50px);
+            z-index: -1;
+            animation: float 15s infinite alternate;
+        }
+
+        @keyframes float {
+            from { transform: translate(-50px, -50px); }
+            to { transform: translate(50px, 50px); }
+        }
+
+        /* App Layout */
+        .glass-card {
+            background: var(--glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+        }
+
+        .nav-active { color: var(--primary); }
+        .nav-active i { transform: translateY(-4px); }
+
+        .btn-ripple {
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Editor Overlays */
+        .guide-line {
+            position: absolute;
+            border: 1px dashed rgba(255, 255, 255, 0.5);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .face-oval {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60%;
+            height: 70%;
+            border: 2px solid rgba(99, 102, 241, 0.6);
+            border-radius: 50% 50% 45% 45%;
+            pointer-events: none;
+            display: none;
+        }
+
+        /* Hide Scrollbar */
+        ::-webkit-scrollbar { display: none; }
+
+        .step-content {
+            display: none;
+            animation: slideUp 0.4s ease-out;
+        }
+        .step-content.active { display: block; }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .tab-btn { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+
+        /* Loader */
+        .loader-ring {
+            width: 48px;
+            height: 48px;
+            border: 4px solid #FFF;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .studio-badge {
+            background: linear-gradient(90deg, #f59e0b, #fbbf24);
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 2px 10px rgba(245, 158, 11, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen pb-24">
+
+    <!-- Splash Screen -->
+    <div id="splash">
+        <div class="blob" style="top: 10%; left: 10%;"></div>
+        <div class="blob" style="bottom: 10%; right: 10%; width: 400px; height: 400px; background: rgba(0, 255, 255, 0.1);"></div>
+        
+        <div class="logo-container">
+            <i data-lucide="camera" class="w-16 h-16 text-white"></i>
+        </div>
+        
+        <div class="mt-8 text-center">
+            <h1 class="text-3xl font-bold text-white tracking-tight">Passport Photo Maker</h1>
+            <p class="text-white/80 mt-2 font-medium">Smart & Professional Photos</p>
+        </div>
+
+        <div class="absolute bottom-12">
+            <div class="loader-ring"></div>
+        </div>
+        
+        <div class="absolute bottom-4 text-white/40 text-xs">
+            Powered by Nitai Studio
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main id="app" class="hidden">
+        <!-- Header -->
+        <header class="bg-indigo-600 rounded-b-[2.5rem] pt-12 pb-20 px-6 shadow-xl relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -mr-24 -mt-24 blur-2xl"></div>
+            <div class="relative z-10 flex justify-between items-center">
+                <div>
+                    <h2 class="text-white text-2xl font-bold">Passport Pro</h2>
+                    <p class="text-indigo-100 text-sm">Create studio-quality photos</p>
+                </div>
+                <div id="studio-badge-container" class="hidden">
+                    <span class="studio-badge">STUDIO MODE ON</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dynamic Content Area -->
+        <div class="px-6 -mt-10">
+            
+            <!-- Home View -->
+            <section id="view-home" class="step-content active">
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="document.getElementById('file-input').click()" class="glass-card p-6 rounded-3xl flex flex-col items-center justify-center space-y-3 active:scale-95 transition-transform">
+                        <div class="w-14 h-14 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600">
+                            <i data-lucide="image"></i>
+                        </div>
+                        <span class="font-semibold text-slate-700">Gallery</span>
+                    </button>
+                    <button onclick="openCamera()" class="glass-card p-6 rounded-3xl flex flex-col items-center justify-center space-y-3 active:scale-95 transition-transform">
+                        <div class="w-14 h-14 bg-pink-100 rounded-2xl flex items-center justify-center text-pink-600">
+                            <i data-lucide="aperture"></i>
+                        </div>
+                        <span class="font-semibold text-slate-700">Camera</span>
+                    </button>
+                </div>
+
+                <div class="mt-8 glass-card rounded-3xl p-6">
+                    <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <i data-lucide="star" class="w-5 h-5 text-amber-500"></i>
+                        Common Presets
+                    </h3>
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">🇮🇳</div>
+                                <div>
+                                    <p class="font-medium text-slate-700">India Passport</p>
+                                    <p class="text-xs text-slate-400">3.5 × 4.5 cm</p>
+                                </div>
+                            </div>
+                            <i data-lucide="chevron-right" class="text-slate-300"></i>
+                        </div>
+                        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">🇺🇸</div>
+                                <div>
+                                    <p class="font-medium text-slate-700">USA Visa</p>
+                                    <p class="text-xs text-slate-400">2 × 2 inch</p>
+                                </div>
+                            </div>
+                            <i data-lucide="chevron-right" class="text-slate-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Editor View -->
+            <section id="view-editor" class="step-content">
+                <div class="glass-card rounded-3xl p-4 mb-6">
+                    <div class="relative bg-slate-200 rounded-2xl overflow-hidden aspect-[4/5] flex items-center justify-center">
+                        <img id="editor-img" class="max-w-none">
+                        <div id="face-guide" class="face-oval"></div>
+                    </div>
+                    
+                    <div class="mt-4 flex justify-center gap-4">
+                        <button onclick="cropper.rotate(-90)" class="p-3 rounded-full bg-slate-100 text-slate-600"><i data-lucide="rotate-ccw"></i></button>
+                        <button onclick="cropper.scaleX(-cropper.getData().scaleX)" class="p-3 rounded-full bg-slate-100 text-slate-600"><i data-lucide="flip-horizontal"></i></button>
+                        <button onclick="toggleFaceGuide()" class="p-3 rounded-full bg-slate-100 text-slate-600"><i data-lucide="user-check"></i></button>
+                        <button onclick="cropper.reset()" class="p-3 rounded-full bg-slate-100 text-slate-600"><i data-lucide="refresh-cw"></i></button>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <label class="block text-sm font-semibold text-slate-600">Select Document Size</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="setPreset(35, 45)" class="preset-btn py-3 rounded-2xl border-2 border-indigo-500 bg-indigo-50 text-indigo-700 font-bold">3.5 x 4.5 cm</button>
+                        <button onclick="setPreset(50.8, 50.8)" class="preset-btn py-3 rounded-2xl border-2 border-transparent bg-white text-slate-600 font-medium shadow-sm">2 x 2 inch</button>
+                    </div>
+                    <button onclick="removeBackground()" id="bg-remove-btn" class="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold shadow-lg flex items-center justify-center gap-2">
+                        <i data-lucide="wand-2"></i> Auto Background Remove
+                    </button>
+                </div>
+            </section>
+
+            <!-- Export View -->
+            <section id="view-export" class="step-content">
+                <div class="glass-card rounded-3xl p-4 mb-6">
+                    <div id="preview-grid" class="grid grid-cols-4 gap-2 bg-white p-4 rounded-xl border border-slate-100 min-h-[200px]">
+                        <!-- Photos will be injected here -->
+                    </div>
+                </div>
+
+                <div class="glass-card rounded-3xl p-6 space-y-6">
+                    <div>
+                        <div class="flex justify-between items-center mb-4">
+                            <span class="font-bold text-slate-700">Photo Quantity</span>
+                            <div class="flex items-center gap-4">
+                                <button onclick="updateQty(-1)" class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-xl font-bold text-slate-600">-</button>
+                                <span id="qty-display" class="w-8 text-center font-bold text-indigo-600 text-lg">8</span>
+                                <button onclick="updateQty(1)" class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-xl font-bold text-slate-600">+</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <span class="block text-sm font-semibold text-slate-600">Background Color</span>
+                        <div class="flex gap-3">
+                            <button onclick="changeBg('#ffffff')" class="w-10 h-10 rounded-full border border-slate-200 bg-white"></button>
+                            <button onclick="changeBg('#3b82f6')" class="w-10 h-10 rounded-full bg-blue-500"></button>
+                            <button onclick="changeBg('#ef4444')" class="w-10 h-10 rounded-full bg-red-500"></button>
+                            <input type="color" onchange="changeBg(this.value)" class="w-10 h-10 rounded-full bg-transparent overflow-hidden">
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3">
+                        <button onclick="downloadSingle()" class="flex-1 py-4 bg-slate-100 text-slate-700 rounded-2xl font-bold flex items-center justify-center gap-2">
+                            <i data-lucide="download"></i> Single
+                        </button>
+                        <button onclick="downloadSheet()" class="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg flex items-center justify-center gap-2">
+                            <i data-lucide="printer"></i> Print Sheet (PDF)
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings View -->
+            <section id="view-settings" class="step-content">
+                <div class="glass-card rounded-3xl p-6 space-y-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-bold text-slate-800">Studio Mode</p>
+                            <p class="text-xs text-slate-400">High DPI, Lossless Quality</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="studio-toggle" class="sr-only peer" onchange="toggleStudioMode()">
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                    </div>
+                    <hr>
+                    <div class="space-y-4">
+                        <p class="font-bold text-slate-800">App Settings</p>
+                        <button id="pwa-install" class="w-full text-left py-3 px-4 bg-slate-50 rounded-2xl flex justify-between items-center">
+                            <span>Install App</span>
+                            <i data-lucide="download-cloud" class="w-5 h-5"></i>
+                        </button>
+                        <button class="w-full text-left py-3 px-4 bg-slate-50 rounded-2xl flex justify-between items-center">
+                            <span>Privacy Policy</span>
+                            <i data-lucide="shield-check" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- Hidden Inputs -->
+        <input type="file" id="file-input" accept="image/*" class="hidden" onchange="handleFile(event)">
+        <canvas id="main-canvas" class="hidden"></canvas>
+        <canvas id="print-canvas" class="hidden"></canvas>
+
+        <!-- Bottom Navigation -->
+        <nav class="fixed bottom-0 inset-x-0 bg-white/80 backdrop-blur-xl border-t border-slate-100 px-8 py-4 flex justify-between items-center z-50">
+            <button onclick="showView('home')" class="nav-item flex flex-col items-center gap-1 nav-active transition-all" id="nav-home">
+                <i data-lucide="home" class="w-6 h-6"></i>
+                <span class="text-[10px] font-bold">Home</span>
+            </button>
+            <button onclick="document.getElementById('file-input').click()" class="flex flex-col items-center justify-center -mt-12 bg-indigo-600 w-16 h-16 rounded-full shadow-2xl text-white">
+                <i data-lucide="plus" class="w-8 h-8"></i>
+            </button>
+            <button onclick="showView('settings')" class="nav-item flex flex-col items-center gap-1 text-slate-400" id="nav-settings">
+                <i data-lucide="settings" class="w-6 h-6"></i>
+                <span class="text-[10px] font-bold">Settings</span>
+            </button>
+        </nav>
+
+        <!-- Footer -->
+        <footer class="mt-12 mb-10 text-center text-slate-400 text-xs">
+            <p>Made by Nitai Studio 🇮🇳</p>
+        </footer>
+    </main>
+
+    <script>
+        // Configuration
+        const API_KEY = 'jaVtDsdShaUtDFaFKK8LiJFB';
+        let cropper = null;
+        let originalImg = null;
+        let processedImgData = null;
+        let currentBgColor = '#ffffff';
+        let currentQty = 8;
+        let isStudioMode = false;
+        let photoWidthMm = 35;
+        let photoHeightMm = 45;
+
+        // Init App
+        window.onload = () => {
+            lucide.createIcons();
+            
+            // PWA Manifest Generation
+            const manifest = {
+                name: "Passport Photo Maker",
+                short_name: "PassportPro",
+                start_url: ".",
+                display: "standalone",
+                background_color: "#6366f1",
+                theme_color: "#6366f1",
+                icons: [
+                    { src: "https://cdn-icons-png.flaticon.com/512/1042/1042339.png", sizes: "512x512", type: "image/png" }
+                ]
+            };
+            const stringManifest = JSON.stringify(manifest);
+            const blob = new Blob([stringManifest], {type: 'application/json'});
+            const manifestURL = URL.createObjectURL(blob);
+            const link = document.createElement('link');
+            link.rel = 'manifest';
+            link.href = manifestURL;
+            document.head.appendChild(link);
+
+            // Splash Exit
+            setTimeout(() => {
+                const splash = document.getElementById('splash');
+                const app = document.getElementById('app');
+                splash.style.transform = 'translateY(-100%)';
+                app.classList.remove('hidden');
+                setTimeout(() => splash.remove(), 800);
+            }, 3000);
+        };
+
+        // Navigation
+        function showView(viewId) {
+            document.querySelectorAll('.step-content').forEach(v => v.classList.remove('active'));
+            document.getElementById('view-' + viewId).classList.add('active');
+            
+            // Update Nav Icons
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.add('text-slate-400'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('nav-active'));
+            const activeNav = document.getElementById('nav-' + viewId);
+            if(activeNav) {
+                activeNav.classList.remove('text-slate-400');
+                activeNav.classList.add('nav-active');
+            }
+            window.scrollTo(0, 0);
+        }
+
+        // Camera Simulation
+        function openCamera() {
+            document.getElementById('file-input').click();
+        }
+
+        // File Handling
+        function handleFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = document.getElementById('editor-img');
+                img.src = event.target.result;
+                
+                showView('editor');
+                
+                if (cropper) cropper.destroy();
+                
+                setTimeout(() => {
+                    cropper = new Cropper(img, {
+                        aspectRatio: photoWidthMm / photoHeightMm,
+                        viewMode: 1,
+                        dragMode: 'move',
+                        autoCropArea: 0.8,
+                        guides: true,
+                        center: true,
+                        highlight: false,
+                        cropBoxMovable: true,
+                        cropBoxResizable: true,
+                        ready() {
+                            lucide.createIcons();
+                        }
+                    });
+                }, 100);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function setPreset(w, h) {
+            photoWidthMm = w;
+            photoHeightMm = h;
+            if (cropper) cropper.setAspectRatio(w / h);
+            
+            document.querySelectorAll('.preset-btn').forEach(b => {
+                b.classList.remove('border-indigo-500', 'bg-indigo-50', 'text-indigo-700', 'font-bold');
+                b.classList.add('border-transparent', 'bg-white', 'text-slate-600', 'font-medium');
+            });
+            event.currentTarget.classList.add('border-indigo-500', 'bg-indigo-50', 'text-indigo-700', 'font-bold');
+        }
+
+        function toggleFaceGuide() {
+            const guide = document.getElementById('face-guide');
+            guide.style.display = guide.style.display === 'block' ? 'none' : 'block';
+        }
+
+        // Background Removal
+        async function removeBackground() {
+            const btn = document.getElementById('bg-remove-btn');
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = '<div class="loader-ring !w-5 !h-5 border-2"></div> Processing...';
+            btn.disabled = true;
+
+            const croppedCanvas = cropper.getCroppedCanvas();
+            croppedCanvas.toBlob(async (blob) => {
+                const formData = new FormData();
+                formData.append('image_file', blob);
+                formData.append('size', 'auto');
+
+                try {
+                    const response = await fetch('https://api.remove.bg/v1.0/removebg', {
+                        method: 'POST',
+                        headers: { 'X-Api-Key': API_KEY },
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        const resultBlob = await response.blob();
+                        processedImgData = URL.createObjectURL(resultBlob);
+                        generatePreviews();
+                        showView('export');
+                    } else {
+                        alert("API Error: Using original photo as fallback.");
+                        processedImgData = croppedCanvas.toDataURL();
+                        generatePreviews();
+                        showView('export');
+                    }
+                } catch (err) {
+                    alert("Network Error: Manual background used.");
+                    processedImgData = croppedCanvas.toDataURL();
+                    generatePreviews();
+                    showView('export');
+                } finally {
+                    btn.innerHTML = originalContent;
+                    btn.disabled = false;
+                }
+            });
+        }
+
+        // Preview & Quantity
+        function generatePreviews() {
+            const grid = document.getElementById('preview-grid');
+            grid.innerHTML = '';
+            
+            for (let i = 0; i < currentQty; i++) {
+                const container = document.createElement('div');
+                container.className = 'aspect-[3.5/4.5] w-full relative rounded border shadow-sm overflow-hidden';
+                container.style.backgroundColor = currentBgColor;
+                
+                const img = document.createElement('img');
+                img.src = processedImgData;
+                img.className = 'w-full h-full object-cover';
+                
+                container.appendChild(img);
+                grid.appendChild(container);
+            }
+        }
+
+        function updateQty(delta) {
+            currentQty = Math.max(1, Math.min(32, currentQty + delta));
+            document.getElementById('qty-display').innerText = currentQty;
+            generatePreviews();
+        }
+
+        function changeBg(color) {
+            currentBgColor = color;
+            generatePreviews();
+        }
+
+        // Export Functions
+        function downloadSingle() {
+            const canvas = document.getElementById('main-canvas');
+            const ctx = canvas.getContext('2d');
+            const dpi = isStudioMode ? 600 : 300;
+            const pxW = (photoWidthMm / 25.4) * dpi;
+            const pxH = (photoHeightMm / 25.4) * dpi;
+
+            canvas.width = pxW;
+            canvas.height = pxH;
+
+            ctx.fillStyle = currentBgColor;
+            ctx.fillRect(0, 0, pxW, pxH);
+
+            const img = new Image();
+            img.onload = () => {
+                ctx.drawImage(img, 0, 0, pxW, pxH);
+                const link = document.createElement('a');
+                link.download = 'passport-photo.png';
+                link.href = canvas.toDataURL('image/png', 1.0);
+                link.click();
+            };
+            img.src = processedImgData;
+        }
+
+        async function downloadSheet() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const sheetW = 210;
+            const margin = 15;
+            const gap = 5;
+            
+            let x = margin;
+            let y = margin;
+
+            for (let i = 0; i < currentQty; i++) {
+                // Background
+                doc.setFillColor(currentBgColor);
+                doc.rect(x, y, photoWidthMm, photoHeightMm, 'F');
+                
+                // Image
+                doc.addImage(processedImgData, 'PNG', x, y, photoWidthMm, photoHeightMm);
+                
+                // Cut line
+                doc.setDrawColor(200);
+                doc.setLineWidth(0.1);
+                doc.rect(x, y, photoWidthMm, photoHeightMm, 'S');
+
+                x += photoWidthMm + gap;
+                if (x + photoWidthMm > sheetW - margin) {
+                    x = margin;
+                    y += photoHeightMm + gap;
+                }
+            }
+
+            doc.save('passport-print-sheet.pdf');
+        }
+
+        // Settings
+        function toggleStudioMode() {
+            isStudioMode = document.getElementById('studio-toggle').checked;
+            document.getElementById('studio-badge-container').style.display = isStudioMode ? 'block' : 'none';
+        }
+
+        // PWA Service Worker (Inline)
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+                const CACHE_NAME = 'passport-v1';
+                self.addEventListener('install', (e) => {
+                    e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(['./'])));
+                });
+                self.addEventListener('fetch', (e) => {
+                    e.respondWith(caches.match(e.request).then(res => res || fetch(e.request)));
+                });
+            `;
+            const blob = new Blob([swCode], {type: 'application/javascript'});
+            const swUrl = URL.createObjectURL(blob);
+            navigator.serviceWorker.register(swUrl);
+        }
+
+        // Install Button Logic
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('pwa-install').style.display = 'flex';
+        });
+
+        document.getElementById('pwa-install').addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') deferredPrompt = null;
+            }
+        });
+    </script>
+</body>
+</html>
